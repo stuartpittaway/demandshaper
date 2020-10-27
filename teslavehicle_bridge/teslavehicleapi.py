@@ -112,10 +112,7 @@ id=v['id']
 # -------------------------------------------------------------------------------------
 def emonpi_on_connect(client, userdata, flags, rc):
     logging.info("Connected with result code "+str(rc))
-# The first time we connect to MQTT ask the vehicle for its state
-# this also generates the inputs in emoncms ready for device manager to configure
     client.subscribe(mqttcred["basetopic"]+"/teslavehicle/rapi/#")
-#    GetVehicleChargeState()
 
 def emonpi_on_message(client, userdata, msg):
     global requestchargestate
