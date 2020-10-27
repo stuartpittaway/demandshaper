@@ -15,11 +15,11 @@ class teslavehicle
     public function default_settings() {
         $defaults = new stdClass();
         $defaults->soc_source = "input"; // time, energy, distance, input, ovms
-        $defaults->battery_capacity = 40.0;
-        $defaults->charge_rate = 7.5;
+        $defaults->battery_capacity = 55.0;
+        $defaults->charge_rate = 7.2;
         $defaults->target_soc = 0.8;
         $defaults->current_soc = 0.2;
-        $defaults->balpercentage = 0.9;
+        $defaults->balpercentage = 1.0;
         $defaults->baltime = 2.0;
         $defaults->car_economy = 4.0;
         $defaults->charge_energy = 0.0;
@@ -47,8 +47,7 @@ class teslavehicle
 
         if ($this->last_ctrlmode[$device]!="on") {
             $this->last_ctrlmode[$device] = "on";
-            $this->mqtt_client->publish("$device/rapi/in/\$ST","00 00 00 00",0);
-            $this->mqtt_client->publish("$device/rapi/in/\$FE","",0);
+            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/charge","1",0);
             schedule_log("$device switch on");
         }
     }
@@ -61,8 +60,7 @@ class teslavehicle
 
         if ($this->last_ctrlmode[$device]!="off") {
             $this->last_ctrlmode[$device] = "off";
-            $this->mqtt_client->publish("$device/rapi/in/\$ST","00 00 00 00",0);
-            $this->mqtt_client->publish("$device/rapi/in/\$FS","",0);
+            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/charge","0",0);
             schedule_log("$device switch off");
         }
     }
@@ -76,7 +74,7 @@ class teslavehicle
 
         if ($timer_str!=$this->last_timer[$device]) {
             $this->last_timer[$device] = $timer_str;
-            $this->mqtt_client->publish("$device/rapi/in/\$ST",$timer_str,0);
+            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/settimer",$timer_str,0);
             schedule_log("$device set timer $timer_str");
         }
     }
@@ -88,13 +86,13 @@ class teslavehicle
         if (!isset($this->last_divert_mode[$device])) $this->last_divert_mode[$device] = "";
         if ($this->last_divert_mode[$device]!=$mode) {
             $this->last_divert_mode[$device] = $mode;
-            $this->mqtt_client->publish("$device/divertmode/set",$mode,0);
+            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/divertmode/set",$mode,0);
             schedule_log("$device divert mode $mode");
         }
     }
 
     public function send_state_request($device) {
-        $this->mqtt_client->publish($this->basetopic."/$device/in/state","",0);
+        $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/state","",0);
     }
 
     public function handle_state_response($schedule,$message,$timezone) {
@@ -106,8 +104,8 @@ class teslavehicle
         $state = new stdClass;
 
         // Get OpenEVSE timer state
-        if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/\$GD","",$this->basetopic."/$device/rapi/out")) {
-            $ret = explode(" ",substr($result,4,11));
+        if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/timerstate","",$this->basetopic."/$device/rapi/out/timerstate")) {
+            $ret = explode(" ",$result);
             if (count($ret)==4) {
                 $state->timer_start1 = ((int)$ret[0])+((int)$ret[1]/60);
                 $state->timer_stop1 = ((int)$ret[2])+((int)$ret[3]/60);
@@ -121,7 +119,7 @@ class teslavehicle
         }
 
         // Get OpenEVSE state
-        if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/\$GS","",$this->basetopic."/$device/rapi/out")) {
+        if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/state","",$this->basetopic."/$device/rapi/out/state")) {
             $ret = explode(" ",$result);
             if ($ret[1]==254) {
                 if ($state->timer_start1==0 && $state->timer_stop1==0) {
@@ -129,7 +127,7 @@ class teslavehicle
                 } else {
                     $state->ctrl_mode = "timer";
                 }
-            } 
+            }
             else if ($ret[1]==1 || $ret[1]==3) {
                 if ($state->timer_start1==0 && $state->timer_stop1==0) {
                     $state->ctrl_mode = "on";
@@ -154,14 +152,6 @@ class teslavehicle
                 if ($feedid = $input->exists_nodeid_name($userid,$device,"soc")) {
                     $schedule->settings->current_soc = $input->get_last_value($feedid)*0.01;
                     schedule_log("Recalculating EVSE schedule based on emoncms input: ".$schedule->settings->current_soc);
-                }
-            }
-            else if ($schedule->settings->soc_source=='ovms') {
-                if ($schedule->settings->ovms_vehicleid!='' && $schedule->settings->ovms_carpass!='') {
-                    global $demandshaper;
-                    $ovms = $demandshaper->fetch_ovms_v2($schedule->settings->ovms_vehicleid,$schedule->settings->ovms_carpass);
-                    if (isset($ovms['soc'])) $schedule->settings->current_soc = $ovms['soc']*0.01;
-                    schedule_log("Recalculating EVSE schedule based on ovms: ".$schedule->settings->current_soc);
                 }
             }
             $kwh_required = ($schedule->settings->target_soc-$schedule->settings->current_soc)*$schedule->settings->battery_capacity;

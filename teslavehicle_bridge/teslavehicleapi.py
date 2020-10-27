@@ -112,20 +112,20 @@ id=v['id']
 # -------------------------------------------------------------------------------------
 def emonpi_on_connect(client, userdata, flags, rc):
     logging.info("Connected with result code "+str(rc))
-    client.subscribe(mqttcred["basetopic"]+"/teslavehicle/rapi/#")
+    client.subscribe(mqttcred["basetopic"]+"/teslavehicle/rapi/in/#")
 
 def emonpi_on_message(client, userdata, msg):
     global requestchargestate
 
     logging.debug("Message "+str(msg.topic)+"  ["+str(msg.payload.decode())+"]")
 
-    if msg.topic.endswith("/rapi/timerstate"):
-        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/timerstate",1,0)
+    if msg.topic.endswith("/rapi/in/timerstate"):
+        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/timerstate","01 00 03 00",0)
 
-    if msg.topic.endswith("/rapi/state"):
-        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/state",1,0)
+    if msg.topic.endswith("/rapi/in/state"):
+        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/state","0 1",0)
 
-    if msg.topic.endswith("/rapi/charge"):
+    if msg.topic.endswith("/rapi/in/charge"):
         if str(msg.payload.decode())=="1":
             # Start charging
             requestchargestate=RequestChargeState.STARTCHARGE

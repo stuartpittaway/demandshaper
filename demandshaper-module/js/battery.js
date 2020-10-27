@@ -32,7 +32,7 @@ var battery = {
         // Dimentions
         battery.width = $("#"+element+"_bound").width()-5;
         
-        console.log(battery.width)
+        //console.log(battery.width)
         if (battery.width>400) battery.width = 400;
         battery.height = battery.width*0.44;
         $("#"+element+"_bound").css("height",battery.height);
@@ -101,7 +101,7 @@ var battery = {
         // Add on balancing time if balancing percentage is lower than end SOC
         if (battery.balpercentage < battery.target_soc) {
             time_left += battery.baltime;
-            console.log("Balancing required Time to be added: " + battery.baltime + " - New Time Left: " + time_left);
+            //console.log("Balancing required Time to be added: " + battery.baltime + " - New Time Left: " + time_left);
         }
         
         battery.period = time_left;

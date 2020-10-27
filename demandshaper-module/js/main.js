@@ -52,9 +52,9 @@ function calc_schedule(callback) {
         $.ajax({
             type: 'POST',
             data: "config="+JSON.stringify(schedule.settings.forecast_config)+"&interruptible="+schedule.settings.interruptible+"&period="+schedule.runtime.timeleft+"&end="+schedule.settings.end_timestamp,
-            url: path+"demandshaper/schedule", 
-            dataType: 'json', 
-            async: true, 
+            url: path+"demandshaper/schedule",
+            dataType: 'json',
+            async: true,
             success: function(result) {
                 schedule.runtime.periods = result;
                 $("#schedule_json").html(JSON.stringify(schedule.runtime.periods));
