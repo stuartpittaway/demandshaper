@@ -1,6 +1,11 @@
 function update_input_UI_teslavehicle() {
     $(".openevse").show();
 
+    // Hide OVMS option
+    $("select[name='soc_source'] option[value='ovms']").hide();
+    $("div[name='divert_mode']").parent().remove();
+    $(".openevse-balancing").hide();
+
     if (schedule.settings.soc_source=="input") {
         $("#run_period").hide();
         $("#charge_energy_div").hide();
@@ -21,9 +26,7 @@ function update_input_UI_teslavehicle() {
         battery.draw();
 
     } else {
-        $(".openevse-balancing").hide();
         $("#battery_bound").hide();
-        //$(".ovms-options").hide();
         $("#run_period").parent().addClass('span4').removeClass('span2');
 
         if (schedule.settings.soc_source=="time") {
@@ -100,18 +103,13 @@ function teslavehicle_calc_modes(reset_timeleft) {
             if (schedule.settings.target_soc>1.0) schedule.settings.target_soc = 1.0;
         break;
         case "input":
-//        case "ovms":
             // 1. Start with current and target SOC
             // 2. Charge energy
-            schedule.settings.charge_energy = (schedule.settings.target_soc-schedule.settings.current_soc)*schedule.settings.battery_capacity
+            schedule.settings.charge_energy = (schedule.settings.target_soc - schedule.settings.current_soc) * schedule.settings.battery_capacity
             // 3. Charge distance is energy x economy
             schedule.settings.charge_distance = schedule.settings.charge_energy * schedule.settings.car_economy
             // 4. Charge period is energy divided by charge rate
             schedule.settings.period = schedule.settings.charge_energy / schedule.settings.charge_rate
-            // 5. Apply balancing time
-            if (schedule.settings.balpercentage < schedule.settings.target_soc) {
-                schedule.settings.period += schedule.settings.baltime;
-            }
         break;
     }
     schedule.settings.charge_energy = 1.0*(schedule.settings.charge_energy.toFixed(2))
@@ -137,10 +135,10 @@ function schedule_info_teslavehicle(forecast_units,mean,peak) {
 }
 
 function teslavehicle_update_UI_from_input_values(inputs) {
-console.log(inputs)
+//console.log(inputs)
     if (inputs.charger_actual_current!=undefined) $("#charge_current").html((inputs.charger_actual_current.value*0.001).toFixed(1));
 
-//    if (inputs.temp1!=undefined) $("#openevse_temperature").html((inputs.temp1.value*0.1).toFixed(1));
+    if (inputs.outside_temp!=undefined) $("#openevse_temperature").html((inputs.outside_temp.value).toFixed(1));
 
     if (inputs.battery_level!=undefined) {
         var last_soc = parseFloat(schedule.settings.current_soc)
@@ -163,11 +161,11 @@ function teslavehicle_fetch_ovms_soc(callback) { }
 
 function teslavehicle_events() {
     // Load current SOC at startup
-    if (schedule.settings.soc_source=="ovms") {
-        teslavehicle_fetch_ovms_soc(function(changed){
-            if (changed) on_UI_change();
-        });
-    }
+//    if (schedule.settings.soc_source=="ovms") {
+//        teslavehicle_fetch_ovms_soc(function(changed){
+//            if (changed) on_UI_change();
+//        });
+//    }
 
     $("#battery").on("bchange",function() {
 //        schedule.settings.target_soc = battery.charge_limit_soc*0.1;

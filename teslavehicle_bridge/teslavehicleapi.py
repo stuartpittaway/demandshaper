@@ -297,6 +297,10 @@ while 1:
             if legacy['response']['id']==id and legacy['response']['state']=='online':
                 GetVehicleChargeState()
                 mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/sleep",2,0)
+                mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/outside_temp", legacy['response']['climate_state']['outside_temp'] ,0)
+                mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/inside_temp",  legacy['response']['climate_state']['inside_temp'] ,0)
+
+
         else:
             #  'error': 'vehicle unavailable:
             logging.debug(legacy['error'])
