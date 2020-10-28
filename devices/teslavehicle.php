@@ -32,6 +32,7 @@ class teslavehicle
     }
 
     public function set_basetopic($basetopic) {
+        schedule_log("TESLA: $device base topic set to $basetopic");
         $this->basetopic = $basetopic;
     }
 
@@ -41,27 +42,23 @@ class teslavehicle
 
     public function on($device) {
         $device = $this->basetopic."/$device";
-
         if (!isset($this->last_ctrlmode[$device])) $this->last_ctrlmode[$device] = "";
         $this->last_timer[$device] = "00 00 00 00";
-
         if ($this->last_ctrlmode[$device]!="on") {
             $this->last_ctrlmode[$device] = "on";
-            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/charge","1",0);
-            schedule_log("$device switch on");
+            $this->mqtt_client->publish("$device/rapi/in/charge","1",0);
+            schedule_log("TESLA: $device switch on");
         }
     }
 
     public function off($device) {
         $device = $this->basetopic."/$device";
-
         if (!isset($this->last_ctrlmode[$device])) $this->last_ctrlmode[$device] = "";
         $this->last_timer[$device] = "00 00 00 00";
-
         if ($this->last_ctrlmode[$device]!="off") {
             $this->last_ctrlmode[$device] = "off";
-            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/charge","0",0);
-            schedule_log("$device switch off");
+            $this->mqtt_client->publish("$device/rapi/in/charge","0",0);
+            schedule_log("TESLA: $device switch off");
         }
     }
 
@@ -74,8 +71,8 @@ class teslavehicle
 
         if ($timer_str!=$this->last_timer[$device]) {
             $this->last_timer[$device] = $timer_str;
-            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/settimer",$timer_str,0);
-            schedule_log("$device set timer $timer_str");
+            $this->mqtt_client->publish("$device/rapi/in/settimer",$timer_str,0);
+            schedule_log("TESLA: $device set timer $timer_str");
         }
     }
 
@@ -86,8 +83,8 @@ class teslavehicle
         if (!isset($this->last_divert_mode[$device])) $this->last_divert_mode[$device] = "";
         if ($this->last_divert_mode[$device]!=$mode) {
             $this->last_divert_mode[$device] = $mode;
-            $this->mqtt_client->publish($this->basetopic."/$device/rapi/in/divertmode/set",$mode,0);
-            schedule_log("$device divert mode $mode");
+            $this->mqtt_client->publish("$device/rapi/in/divertmode",$mode,0);
+            schedule_log("TESLA: $device divert mode $mode");
         }
     }
 
@@ -103,7 +100,7 @@ class teslavehicle
         $valid = true;
         $state = new stdClass;
 
-        // Get OpenEVSE timer state
+        // Get TESLA timer state
         if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/timerstate","",$this->basetopic."/$device/rapi/out/timerstate")) {
             $ret = explode(" ",$result);
             if (count($ret)==4) {
@@ -118,7 +115,7 @@ class teslavehicle
             $valid = false;
         }
 
-        // Get OpenEVSE state
+        // Get TESLA API state
         if ($result = $mqtt_request->request($this->basetopic."/$device/rapi/in/state","",$this->basetopic."/$device/rapi/out/state")) {
             $ret = explode(" ",$result);
             if ($ret[1]==254) {
@@ -151,7 +148,7 @@ class teslavehicle
                 global $input;
                 if ($feedid = $input->exists_nodeid_name($userid,$device,"soc")) {
                     $schedule->settings->current_soc = $input->get_last_value($feedid)*0.01;
-                    schedule_log("Recalculating EVSE schedule based on emoncms input: ".$schedule->settings->current_soc);
+                    schedule_log("Recalculating TESLA schedule based on emoncms input: ".$schedule->settings->current_soc);
                 }
             }
             $kwh_required = ($schedule->settings->target_soc-$schedule->settings->current_soc)*$schedule->settings->battery_capacity;
@@ -161,7 +158,7 @@ class teslavehicle
                 $schedule->settings->period += $schedule->settings->baltime;
             }
             $schedule->runtime->timeleft = $schedule->settings->period * 3600;
-            schedule_log("EVSE timeleft: ".$schedule->runtime->timeleft);
+            schedule_log("TESLA timeleft: ".$schedule->runtime->timeleft);
         }
         return $schedule;
     }

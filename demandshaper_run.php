@@ -96,13 +96,13 @@ $lasttime = time();
 while(true) 
 {
     $now = time();
-    
+
     // demandshaper trigger
     $trigger = $redis->llen("demandshaper:trigger");
     if ($trigger>0) {
         $log->info("trigger");
     }
-    
+
     // ---------------------------------------------------------------------
     // Control Loop
     // ---------------------------------------------------------------------
@@ -178,12 +178,12 @@ while(true)
                     $log->info("  status: OFF");
                     $log->info("  timeleft: ".$schedule->runtime->timeleft."s");
                 }
-                
+
                 // -----------------------------------------------------------------------
                 // Publish control commands
                 // -----------------------------------------------------------------------
                 if ($connected) {
-                    
+
                     // Timezone correction e.g conversion to UTC for applicable devices
                     $timeOffset = $device_class[$device_type]->get_time_offset($timezone);
 
@@ -191,7 +191,7 @@ while(true)
                     // Set Timer
                     // ----------------------------------------------------------------------------
                     $s1 = 0.0; $e1 = 0.0; $s2 = 0.0; $e2 = 0.0;
-                    
+
                     // Smart or regular timer
                     if ($schedule->settings->ctrlmode=="smart" || $schedule->settings->ctrlmode=="timer") {
                         if (count($schedule->runtime->periods)) {
@@ -202,7 +202,7 @@ while(true)
                     }
                     else if ($schedule->settings->ctrlmode=="on") $device_class[$device_type]->on($device);
                     else if ($schedule->settings->ctrlmode=="off") $device_class[$device_type]->off($device);
-                    
+
                     if (isset($schedule->settings->flowT)) {
                         $device_class[$device_type]->set_flowT($device,$schedule->settings->flowT);
                     }
@@ -211,7 +211,7 @@ while(true)
                         $device_class[$device_type]->set_divert_mode($device,$schedule->settings->divert_mode);
                     }
                 }
-                
+
                 // -----------------------------------------------------------------------
                 // Recalculate schedule
                 // -----------------------------------------------------------------------
@@ -220,12 +220,12 @@ while(true)
                     $date->setTimestamp($schedule->settings->end_timestamp);
                     $date->modify("+1 day");
                     $schedule->settings->end_timestamp = $date->getTimestamp();
-                                                
+
                     $schedule->runtime->timeleft = $schedule->settings->period * 3600;
                     unset($schedule->runtime->started);
-                                                
+
                     schedule_log("$device schedule complete");
-                    
+
                     if ($schedule->settings->ctrlmode=="smart") {
                         if (in_array($schedule->settings->on_completion,array("on","off","smart"))) {
                             $schedule->settings->ctrlmode = $schedule->settings->on_completion;
@@ -233,26 +233,26 @@ while(true)
                         }
                     }
                 }
-                
+
                 if ($schedule->settings->ctrlmode=="smart") {
-                
+
                     // If the schedule has not yet started it is ok to recalculate the schedule periods to find a more optimum time
                     if (!isset($schedule->runtime->started) || $schedule->settings->interruptible) {
-                        
+
                         // Automatic update of time left for schedule e.g take into account updated battery SOC of electric car, home battery, device
                         $schedule = $device_class[$device_type]->auto_update_timeleft($schedule);
-                    
+
                         // 1. Compile combined forecast
                         $combined = $demandshaper->get_combined_forecast($schedule->settings->forecast_config,$timezone);
                         // 2. Calculate forecast min/max 
                         $combined = forecast_calc_min_max($combined);
                         // 3. Calculate schedule
-                        if ($schedule->settings->interruptible) {                            
+                        if ($schedule->settings->interruptible) {
                             $schedule->runtime->periods = schedule_interruptible($combined,$schedule->runtime->timeleft,$schedule->settings->end_timestamp,$timezone);
                         } else {
                             $schedule->runtime->periods = schedule_block($combined,$schedule->runtime->timeleft,$schedule->settings->end_timestamp,$timezone);
                         }
-                            
+
                         $schedule = json_decode(json_encode($schedule));
                         $log->info("  reschedule ".json_encode($schedule->runtime->periods));
                     }
@@ -265,28 +265,26 @@ while(true)
                     // 3. Log output for debug
                     $log->info("  timer schedule ".json_encode($schedule->runtime->periods));
                 }
-                
-                
+
                 $schedules->$sid = $schedule;
-                
+
             } // foreach schedules
             $demandshaper->set($userid,$schedules);
         } // user list
         sleep(1.0);
         $lasttime = $now;
     } // 10s update
-    
 
     // -----------------------------------------------------------------------
     // Send a request for device state every 5 mins
-    // -----------------------------------------------------------------------   
+    // -----------------------------------------------------------------------
     if ($connected && (time()-$last_state_check)>300) {
         $last_state_check = time();
-        
+
         $result = $mysqli->query("SELECT `userid` FROM demandshaper");
         while ($row = $result->fetch_object()) {
             $userid = $row->userid;
-            
+
             $schedules = $demandshaper->get($userid);
             foreach ($schedules as $schedule) {
                 if ($schedule->settings->device) {
@@ -339,7 +337,7 @@ function message($message)
     
     $userid = false;
     $device = false;
-    
+
     if (isset($settings['mqtt']['multiuser']) && $settings['mqtt']['multiuser']) {
         if (isset($topic_parts[1]) && isset($topic_parts[2])) {
             $userid = $topic_parts[1];
@@ -352,7 +350,7 @@ function message($message)
             $device = $topic_parts[1];
         }
     }
-    
+
     if ($userid && $device && isset($schedules->$device)) {
         $device_type = $schedules->$device->settings->device_type;
         $result = $device_class[$device_type]->handle_state_response($schedules->$device,$message,$user->get_timezone($userid));

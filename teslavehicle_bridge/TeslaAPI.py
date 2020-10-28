@@ -106,6 +106,8 @@ class TeslaAPI:
     def startcharging(self,id):
         logging.info("Starting charge")
         reply=self.api_post(self.api_url + "/vehicles/{id}/command/charge_start".format(id=id), data='').json()
+        if reply['response']==None:
+            return None
         return reply['response']['result']
 
     def stopcharging(self,id):

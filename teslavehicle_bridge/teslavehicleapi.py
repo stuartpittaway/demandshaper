@@ -52,6 +52,9 @@ global vehicle_charging
 global vehicle_chargeportlocked
 global api
 global v
+global timer_setting
+
+timer_setting="00 00 00 00"
 
 v=None
 requestchargestate=RequestChargeState.IDLE
@@ -116,15 +119,24 @@ def emonpi_on_connect(client, userdata, flags, rc):
 
 def emonpi_on_message(client, userdata, msg):
     global requestchargestate
+    global timer_setting
 
     logging.debug("Message "+str(msg.topic)+"  ["+str(msg.payload.decode())+"]")
 
     if msg.topic.endswith("/rapi/in/timerstate"):
-        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/timerstate","01 00 03 00",0)
+        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/timerstate",timer_setting,0)
 
     if msg.topic.endswith("/rapi/in/state"):
-        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/state","0 1",0)
+        #Default to off
+        state="0 254"
+        if vehicle_charging==True:
+            state="0 1"
 
+        mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/state",state,0)
+
+    if msg.topic.endswith("/rapi/in/settimer"):
+        timer_setting=str(msg.payload.decode())
+ 
     if msg.topic.endswith("/rapi/in/charge"):
         if str(msg.payload.decode())=="1":
             # Start charging
@@ -261,7 +273,7 @@ countdown=1
 
 # Loop
 while 1:
-    logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", Port locked:"+str(vehicle_chargeportlocked)+", State="+str(requestchargestate))
+    #logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", Port locked:"+str(vehicle_chargeportlocked)+", State="+str(requestchargestate))
 
     #Sleep for 5 seconds
     time.sleep(sleepseconds)
@@ -306,7 +318,8 @@ while 1:
             GetVehicleChargeState()
             if vehicle_charging==False and vehicle_chargeportlocked:
                 # Now start the charge
-                api.startcharging(id)
+                if api.startcharging(id)==None:
+                    logging.warning("Failed to start charge")
                 # Make sure we query the car very soon in the loop
                 countdown=2
 
