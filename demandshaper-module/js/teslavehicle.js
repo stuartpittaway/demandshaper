@@ -138,7 +138,7 @@ function teslavehicle_update_UI_from_input_values(inputs) {
 //console.log(inputs)
     if (inputs.charger_actual_current!=undefined) $("#charge_current").html((inputs.charger_actual_current.value*0.001).toFixed(1));
 
-    if (inputs.outside_temp!=undefined) $("#openevse_temperature").html((inputs.outside_temp.value).toFixed(1));
+    if (inputs.outside_temp!=undefined && inputs.outside_temp.value!=null) $("#openevse_temperature").html((inputs.outside_temp.value).toFixed(1));
 
     if (inputs.battery_level!=undefined) {
         var last_soc = parseFloat(schedule.settings.current_soc)
