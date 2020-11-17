@@ -1,24 +1,29 @@
+import datetime
+import time
+
 import requests
 from TeslaAPI import TeslaAPI
 import argparse
 import json
-import time
-from datetime import datetime, date, time, timedelta
+from datetime import timedelta
 import os.path
 from os import path
-import time, random
+import random
 import paho.mqtt.client as mqtt
 import logging
 from socket import *
 from enum import Enum
-
 
 class RequestChargeState(Enum):
     IDLE=1
     STOPCHARGE=2
     STARTCHARGE=3
 
-
+def in_between(now, start, end):
+    if start <= end:
+        return start <= now < end
+    else: # over midnight e.g., 23:30-04:15
+        return start <= now or now < end
 
 
 # Main program code
@@ -43,23 +48,27 @@ if not isinstance(numeric_level, int):
     raise ValueError('Invalid log level: %s' % loglevel)
 logging.basicConfig(level=numeric_level)
 
-logging.debug(args)
+#logging.debug(args)
 
 # Nasty global variables....
 global id
 global requestchargestate
 global vehicle_charging
-global vehicle_chargeportlocked
+global vehicle_connected
 global api
 global v
 global timer_setting
+global charge_start
+global charge_end
 
 timer_setting="00 00 00 00"
 
 v=None
 requestchargestate=RequestChargeState.IDLE
 vehicle_charging=False
-vehicle_chargeportlocked=False
+vehicle_connected=False
+charge_start=None
+charge_end=None
 
 api=TeslaAPI()
 
@@ -120,8 +129,11 @@ def emonpi_on_connect(client, userdata, flags, rc):
 def emonpi_on_message(client, userdata, msg):
     global requestchargestate
     global timer_setting
+    global charge_start
+    global charge_end
 
-    logging.debug("Message "+str(msg.topic)+"  ["+str(msg.payload.decode())+"]")
+
+    #logging.debug("Message "+str(msg.topic)+"  ["+str(msg.payload.decode())+"]")
 
     if msg.topic.endswith("/rapi/in/timerstate"):
         mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/rapi/out/timerstate",timer_setting,0)
@@ -136,7 +148,11 @@ def emonpi_on_message(client, userdata, msg):
 
     if msg.topic.endswith("/rapi/in/settimer"):
         timer_setting=str(msg.payload.decode())
- 
+        parts=timer_setting.split()
+        charge_start = datetime.time(int(parts[0]),int(parts[1]))
+        charge_end = datetime.time(int(parts[2]),int(parts[3]))
+        logging.info("Timer set for "+charge_start.isoformat()+" to "+charge_end.isoformat())
+
     if msg.topic.endswith("/rapi/in/charge"):
         if str(msg.payload.decode())=="1":
             # Start charging
@@ -144,6 +160,9 @@ def emonpi_on_message(client, userdata, msg):
         else:
             # Stop charging
             requestchargestate=RequestChargeState.STOPCHARGE
+            charge_start = None
+            charge_end = None
+            timer_setting="00 00 00 00"
 
 
 def emonpi_on_disconnect(client, userdata,rc=0):
@@ -155,8 +174,8 @@ def emonpi_on_disconnect(client, userdata,rc=0):
 
 def GetVehicleChargeState():
     global vehicle_charging
-    global vehicle_chargeportlocked
-    logging.debug("GetVehicleChargeState")
+    global vehicle_connected
+    #logging.debug("GetVehicleChargeState")
 
     attributes = ['battery_level',
     'battery_range',
@@ -167,7 +186,7 @@ def GetVehicleChargeState():
     'charge_limit_soc',
     'charge_limit_soc_min',
     'charge_limit_soc_max',
-    'charge_port_latch',
+#    'charge_port_latch',
     'charge_rate',
     'charger_actual_current',
     'charging_state',
@@ -183,6 +202,8 @@ def GetVehicleChargeState():
     # Discover the charge and battery state
     chargestate=api.charge_state(id)
 
+    #logging.debug (chargestate)
+
     if chargestate['response']==None:
         logging.error("No response to charge state request")
         return
@@ -190,15 +211,24 @@ def GetVehicleChargeState():
     for val in attributes:
         value=chargestate['response'][val]
 
-        if val=='charge_port_latch':
-            vehicle_chargeportlocked=True if value=='Engaged' else False
-            value= 1 if value=='Engaged' else 0
+#        if val=='charge_port_latch':
+#            vehicle_chargeportlocked=True if value=='Engaged' else False
+#            value= 1 if value=='Engaged' else 0
 
         if val=='charging_state':
             vehicle_charging=True if value=='Charging' else False
-            value=1 if value=='Charging' else 0
+            vehicle_connected=False if value=='Disconnected' else True
 
-        logging.debug("MQTT:"+val+"="+str(value))
+            if value=='Charging':
+                value=1
+            elif value=='Disconnected':
+                value=2
+            elif value=='Stopped':
+                value=3
+            else:
+                value=0
+
+        #logging.debug("MQTT:"+val+"="+str(value))
         # Publish to MQTT
         mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/"+val,value,0)
 
@@ -271,9 +301,11 @@ sleepseconds=5
 wakecountdown=args.wakeinterval*60/sleepseconds
 countdown=1
 
+attempts=0
+
 # Loop
 while 1:
-    #logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", Port locked:"+str(vehicle_chargeportlocked)+", State="+str(requestchargestate))
+    #logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", State="+str(requestchargestate))
 
     #Sleep for 5 seconds
     time.sleep(sleepseconds)
@@ -288,7 +320,7 @@ while 1:
         countdown=0
 
     if countdown==0:
-        logging.debug('Countdown zero, checking vehicle state')
+        #logging.debug('Countdown zero, checking vehicle state')
         legacy=api.vehicle_data_legacy(id)
 
         if legacy['response']!=None:
@@ -320,12 +352,15 @@ while 1:
             api.wakeup(id)
             # Update the charge state
             GetVehicleChargeState()
-            if vehicle_charging==False and vehicle_chargeportlocked:
+            # Start charging if its not already, and the vehicle is connected to a charger
+            if vehicle_charging==False and vehicle_connected==True:
                 # Now start the charge
                 if api.startcharging(id)==None:
                     logging.warning("Failed to start charge")
                 # Make sure we query the car very soon in the loop
                 countdown=2
+            else:
+               logging.warning("Tried to start charging, but vehicle is already charging or not connected to charger")
 
     if requestchargestate==RequestChargeState.STOPCHARGE:
         requestchargestate=RequestChargeState.IDLE
@@ -338,3 +373,18 @@ while 1:
                 api.stopcharging(id)
                 # Make sure we query the car very soon in the loop
                 countdown=2
+
+    # Check the timer
+    if charge_start!=None and charge_end!=None and charge_start!=charge_end:
+        #logging.debug("Checking time...")
+        current_time = datetime.datetime.now().time()
+        # We need to be careful that we don't keep waking up the car
+        # if its not connected to a charger
+        if in_between(current_time,charge_start,charge_end):
+            if vehicle_charging==False and attempts<3:
+                requestchargestate=RequestChargeState.STARTCHARGE
+                attempts=attempts+1
+        else:
+            if vehicle_charging:
+                requestchargestate=RequestChargeState.STOPCHARGE
+                attempts=0
