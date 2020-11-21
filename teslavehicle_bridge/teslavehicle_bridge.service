@@ -1,0 +1,39 @@
+# Systemd unit file for OVMS bridge
+
+# INSTALL:
+# sudo ln -s /opt/emoncms/modules/demandshaper/teslavehicle_bridge/teslavehicle_bridge.service /lib/systemd/system
+
+# RUN AT STARTUP
+# sudo systemctl daemon-reload
+# sudo systemctl enable teslavehicle_bridge.service
+
+# START / STOP With:
+# sudo systemctl start teslavehicle_bridge
+# sudo systemctl stop teslavehicle_bridge
+
+[Unit]
+Description=teslavehicle_bridge
+Requires=mosquitto.service
+StartLimitIntervalSec=10
+Documentation=https://github.com/emoncms/demandshaper
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/python3 /opt/emoncms/modules/demandshaper/teslavehicle_bridge/teslavehicleapi.py  --cache /home/pi/tesla_token.json --mqttcredfile /home/pi/mqtt_creds.json --loglevel=INFO
+User=pi
+Group=pi
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=file:/var/log/emoncms/teslavehicle.log
+
+# Restart script if stopped
+Restart=always
+# Wait 30s before restart
+RestartSec=30s
+
+# Tag things in the log
+# If you want to use the journal instead of the file above, uncomment SyslogIdentifier below
+# View with: sudo journalctl -f -u service-runner -o cat
+SyslogIdentifier=teslavehicle_bridge
+
+[Install]
+WantedBy=multi-user.target

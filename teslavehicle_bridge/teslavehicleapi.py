@@ -37,7 +37,7 @@ parser.add_argument('--name', help='Vehicle name (display name) to filter on (if
 parser.add_argument('--cache', help='Filename of cache file to hold Tesla token/credentials',default='tesla_token.json')
 parser.add_argument('--mqttcredfile', help='Filename of JSON file which holds MQTT credentials',default='mqtt_creds.json')
 parser.add_argument('--interval', help='How many minutes between API poll to see if vehicle is awake',default=15)
-parser.add_argument('--charginginterval', help='How many minutes between API poll when vehicle is charging',default=1)
+parser.add_argument('--charginginterval', help='Delay between API poll when vehicle is charging (minutes)',default=2)
 parser.add_argument('--wakeinterval', help='Wake up vehicle interval (minutes)',default=720)
 parser.add_argument('--loglevel', help='Set logging level',default='DEBUG')
 args = parser.parse_args()
@@ -46,7 +46,7 @@ args = parser.parse_args()
 numeric_level = getattr(logging, args.loglevel.upper(), None)
 if not isinstance(numeric_level, int):
     raise ValueError('Invalid log level: %s' % loglevel)
-logging.basicConfig(level=numeric_level)
+logging.basicConfig(format='%(asctime)s %(levelname)s:%(message)s',level=numeric_level)
 
 #logging.debug(args)
 
@@ -347,6 +347,7 @@ while 1:
 
 
     if requestchargestate==RequestChargeState.STARTCHARGE:
+        logging.info('RequestChargeState.STARTCHARGE')
         requestchargestate=RequestChargeState.IDLE
         if vehicle_charging==False:
             api.wakeup(id)
@@ -363,6 +364,7 @@ while 1:
                logging.warning("Tried to start charging, but vehicle is already charging or not connected to charger")
 
     if requestchargestate==RequestChargeState.STOPCHARGE:
+        logging.info('RequestChargeState.STOPCHARGE')
         requestchargestate=RequestChargeState.IDLE
         if vehicle_charging:
             api.wakeup(id)
@@ -378,13 +380,14 @@ while 1:
     if charge_start!=None and charge_end!=None and charge_start!=charge_end:
         #logging.debug("Checking time...")
         current_time = datetime.datetime.now().time()
-        # We need to be careful that we don't keep waking up the car
-        # if its not connected to a charger
+        # We need to be careful that we don't keep waking up the car if its not connected to a charger
         if in_between(current_time,charge_start,charge_end):
             if vehicle_charging==False and attempts<3:
+                logging.info('Timer wants to charge the vehicle')
                 requestchargestate=RequestChargeState.STARTCHARGE
                 attempts=attempts+1
         else:
             if vehicle_charging:
+                logging.info('Timer wants to stop charging the vehicle')
                 requestchargestate=RequestChargeState.STOPCHARGE
                 attempts=0
