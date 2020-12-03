@@ -40,15 +40,19 @@ parser.add_argument('--interval', help='How many minutes between API poll to see
 parser.add_argument('--charginginterval', help='Delay between API poll when vehicle is charging (minutes)',default=2)
 parser.add_argument('--wakeinterval', help='Wake up vehicle interval (minutes)',default=720)
 parser.add_argument('--loglevel', help='Set logging level',default='DEBUG')
+global args
 args = parser.parse_args()
 
 
 numeric_level = getattr(logging, args.loglevel.upper(), None)
 if not isinstance(numeric_level, int):
     raise ValueError('Invalid log level: %s' % loglevel)
-logging.basicConfig(format='%(asctime)s %(levelname)s:%(message)s',level=numeric_level)
 
-#logging.debug(args)
+logging.basicConfig(format='%(asctime)s %(levelname)s:%(message)s',level=numeric_level,filename='/home/pi/teslavehicle.log')
+
+logging.debug(args)
+
+logging.info("Starting...")
 
 # Nasty global variables....
 global id
@@ -60,9 +64,11 @@ global v
 global timer_setting
 global charge_start
 global charge_end
+global teslascheduledchargingstarttime
 
 timer_setting="00 00 00 00"
 
+teslascheduledchargingstarttime=None
 v=None
 requestchargestate=RequestChargeState.IDLE
 vehicle_charging=False
@@ -154,6 +160,7 @@ def emonpi_on_message(client, userdata, msg):
         logging.info("Timer set for "+charge_start.isoformat()+" to "+charge_end.isoformat())
 
     if msg.topic.endswith("/rapi/in/charge"):
+        logging.info(msg.topic)
         if str(msg.payload.decode())=="1":
             # Start charging
             requestchargestate=RequestChargeState.STARTCHARGE
@@ -175,6 +182,7 @@ def emonpi_on_disconnect(client, userdata,rc=0):
 def GetVehicleChargeState():
     global vehicle_charging
     global vehicle_connected
+    global teslascheduledchargingstarttime
     #logging.debug("GetVehicleChargeState")
 
     attributes = ['battery_level',
@@ -193,8 +201,8 @@ def GetVehicleChargeState():
     'charger_voltage',
     'charger_power',
     'minutes_to_full_charge',
+    'scheduled_charging_start_time'
 #    'scheduled_charging_pending',
-#    'scheduled_charging_start_time',
 #    'time_to_full_charge'
      ]
     # v is a global variable
@@ -202,7 +210,7 @@ def GetVehicleChargeState():
     # Discover the charge and battery state
     chargestate=api.charge_state(id)
 
-    #logging.debug (chargestate)
+    logging.debug(chargestate)
 
     if chargestate['response']==None:
         logging.error("No response to charge state request")
@@ -227,6 +235,10 @@ def GetVehicleChargeState():
                 value=3
             else:
                 value=0
+
+        if val=='scheduled_charging_start_time':
+            teslascheduledchargingstarttime=datetime.datetime.fromtimestamp(value);
+            logging.debug("teslascheduledchargingstarttime="+str(teslascheduledchargingstarttime))
 
         #logging.debug("MQTT:"+val+"="+str(value))
         # Publish to MQTT
@@ -277,7 +289,7 @@ else:
     mqttcred["password"]=parts[1]
     mqttcred["basetopic"]=parts[2]
 
-    logging.info('Saving MQTT creds to '+args.mqttcredfile+'. For security, you ensure the relevant permissions are set on this file')
+    logging.info('Saving MQTT creds to '+args.mqttcredfile+'. For security, you must ensure the relevant permissions are set on this file')
     with open(args.mqttcredfile, 'w') as outfile:
         json.dump(mqttcred, outfile)
 
@@ -296,30 +308,44 @@ except Exception:
 
 
 
+global sleepseconds
+global wakecountdown
+global countdown
+
 sleepseconds=5
 # args.wakeinterval is in minutes
 wakecountdown=args.wakeinterval*60/sleepseconds
 countdown=1
 
+global attempts
+
 attempts=0
 
 # Loop
-while 1:
-    #logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", State="+str(requestchargestate))
+def main_loop():
+    global sleepseconds
+    global countdown
+    global wakecountdown
+    global requestchargestate
+    global args
+    global attempts
 
-    #Sleep for 5 seconds
-    time.sleep(sleepseconds)
+    #logging.debug("Loop:"+str(countdown)+", "+str(wakecountdown)+", Charging: "+str(vehicle_charging)+", State="+str(requestchargestate))
 
     wakecountdown=wakecountdown-1
     countdown=countdown-1
 
-    if wakecountdown==0:
+    # Display to MQTT that we are alive (useful when viewing in EMONCMS)
+    mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/wakecountdown",wakecountdown,0)
+    mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/countdown",countdown,0)
+
+    if wakecountdown<=0:
         api.wakeup(id)
         wakecountdown=args.wakeinterval*60/sleepseconds
         #Force a reading to be taken
         countdown=0
 
-    if countdown==0:
+    if countdown<=0:
         #logging.debug('Countdown zero, checking vehicle state')
         legacy=api.vehicle_data_legacy(id)
 
@@ -331,7 +357,6 @@ while 1:
                 mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/sleep",2,0)
                 mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/outside_temp", legacy['response']['climate_state']['outside_temp'] ,0)
                 mqtt_emonpi.publish(mqttcred["basetopic"]+"/teslavehicle/inside_temp",  legacy['response']['climate_state']['inside_temp'] ,0)
-
 
         else:
             #  'error': 'vehicle unavailable:
@@ -388,6 +413,20 @@ while 1:
                 attempts=attempts+1
         else:
             if vehicle_charging:
+                # teslascheduledchargingstarttime we should ensure that the Teslas inbuilt scheduler has not started
+                # to provide a failsafe incase this code doesn't work
                 logging.info('Timer wants to stop charging the vehicle')
                 requestchargestate=RequestChargeState.STOPCHARGE
                 attempts=0
+
+
+
+logging.info('Entering main loop')
+while True:
+    try:
+        main_loop()
+        #Sleep for 5 seconds
+        time.sleep(sleepseconds)
+
+    except Exception:
+        logging.exception('Fatal error in main loop')

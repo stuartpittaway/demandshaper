@@ -23,7 +23,7 @@ ExecStart=/usr/bin/python3 /opt/emoncms/modules/demandshaper/teslavehicle_bridge
 User=pi
 Group=pi
 Environment=PYTHONUNBUFFERED=1
-StandardOutput=file:/var/log/emoncms/teslavehicle.log
+#StandardOutput=file:/var/log/emoncms/teslavehicle.log
 
 # Restart script if stopped
 Restart=always
