@@ -236,7 +236,7 @@ def GetVehicleChargeState():
             else:
                 value=0
 
-        if val=='scheduled_charging_start_time':
+        if val=='scheduled_charging_start_time' and value!=None:
             teslascheduledchargingstarttime=datetime.datetime.fromtimestamp(value);
             logging.debug("teslascheduledchargingstarttime="+str(teslascheduledchargingstarttime))
 
